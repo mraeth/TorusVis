@@ -1,0 +1,21 @@
+# Julia
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+Manifest.toml
+*/Manifest.toml
+
+# Local dependency clones (for cross-repo dev, see README)
+_deps/
+
+# Generated outputs
+scripts/output/
+*.gif
+*.mp4
+
+# OS / editors
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
