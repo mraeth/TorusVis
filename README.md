@@ -175,6 +175,29 @@ fig = visualize_still(TCVGeometry(), grid, ts[100]; mode=:volume, label="dn")
 save("preview.png", fig)
 ```
 
+## Installation
+
+TorusVis and its PlasmaCore.jl dependency are distributed through the
+[BSLRegistry](https://gitlab.mpcdf.mpg.de/bsl6d/BSLRegistry) (neither is in Julia's General
+registry). Add the registry once per machine / cluster account:
+
+```julia
+pkg> registry add https://gitlab.mpcdf.mpg.de/bsl6d/BSLRegistry.git
+```
+
+then install it like any registered package:
+
+```julia
+pkg> add TorusVis
+julia> using TorusVis
+```
+
+Alternatively, type `using TorusVis` directly in the REPL: if the package isn't installed in the
+active environment yet, Julia offers to install it.
+
+Pick up new releases with `pkg> registry up` followed by `pkg> up`. To run the showcase scripts
+below, work from a clone of this repository instead (see *First-time setup*).
+
 ## Running the showcase scripts
 
 From the `TorusVis/` directory, with `density.h5` one level up (the default;
@@ -208,9 +231,10 @@ cd TorusVis
 julia --project=. -e 'using Pkg; Pkg.instantiate()'
 ```
 
-(PlasmaCore.jl is pulled directly from
-`https://github.com/mraeth/PlasmaCore.jl`, since it isn't a registered
-package.)
+(PlasmaCore.jl comes from the BSLRegistry, so add it first; see
+[Installation](#installation). To test against a local PlasmaCore.jl checkout,
+`julia --project=. -e 'using Pkg; Pkg.develop(path="/path/to/PlasmaCore.jl")'`
+— this only changes the gitignored `Manifest.toml`; `Pkg.free("PlasmaCore")` switches back.)
 
 ## Writing your own scene
 
