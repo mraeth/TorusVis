@@ -6,14 +6,15 @@
 # keeps its own true (small) size.
 #
 # Exports a GIF rather than opening an interactive window -- see
-# scripts/output/ for the result.
+# _data/ for the result.
 using TorusVis
 
 datadir = get(ENV, "TORUSVIS_DATADIR", joinpath(@__DIR__, "..", ".."))
-grid, ts, simtime = read_series(joinpath(datadir, "density.h5"), "dn")
+grid, ts, simtime = read_series(joinpath(datadir, "dn"))
 
-outdir = joinpath(@__DIR__, "output")
+outdir = joinpath(@__DIR__, "..", "_data")
 mkpath(outdir)
 
-g = TCVGeometry(q=1.0)
+g = TCVGeometry(q=1.0)   # box size vs. torus is derived from g.B/g.T_i via rho_larmor(g);
+                          # pass B=..., T_i=... here for your actual discharge
 visualize(g, grid, ts, simtime; mode=:volume, record_to=joinpath(outdir, "tcv_volume.gif"), fps=24)

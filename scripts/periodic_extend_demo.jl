@@ -5,7 +5,7 @@ using TorusVis
 using PlasmaCore
 
 datadir = get(ENV, "TORUSVIS_DATADIR", joinpath(@__DIR__, "..", ".."))
-grid, ts, simtime = read_series(joinpath(datadir, "density.h5"), "dn")
+grid, ts, simtime = read_series(joinpath(datadir, "dn"))
 
 frame = ts[1]                      # PlasmaCore.ScalarField, size (nx, ny, nz)
 println("one frame: ", size(frame))

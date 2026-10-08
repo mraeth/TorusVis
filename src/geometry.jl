@@ -72,6 +72,22 @@ geometry uses for it (see module docstring above).
 """
 function minor_radius_bounds(g::AbstractGeometry) end
 
+# Deuterium (singly ionized), the ion species these simulations model.
+const DEUTERON_MASS = 3.3435837724e-27     # kg, CODATA
+const ELEMENTARY_CHARGE = 1.602176634e-19  # C, CODATA
+
+"""
+    rho_larmor(g) -> Float64
+
+Deuteron Larmor radius (metres) at the geometry's own reference magnetic
+field `g.B` (Tesla) and ion temperature `g.T_i` (eV): `sqrt(m_D T_i e) / (e B)`
+(Z=1, deuterium). This is a single reference value for the whole device (its
+vacuum field magnitude, not the true spatially-varying total field) -- used
+by `visualize`/`visualize_still` to convert the simulation box's own size
+(given in Larmor radii) into physical units and size it against the device.
+"""
+rho_larmor(g::AbstractGeometry) = sqrt(DEUTERON_MASS * g.T_i * ELEMENTARY_CHARGE) / (ELEMENTARY_CHARGE * g.B)
+
 """
     cut_point(g, ζ, ρ, θ; off=0.0, s=1)
 
@@ -140,22 +156,28 @@ struct MillerGeometry <: AbstractGeometry
     δ::Float64         # triangularity
     q::Float64         # safety factor
     wedge_width::Float64
+    B::Float64         # reference (vacuum) magnetic field, Tesla -- see `rho_larmor`
+    T_i::Float64       # reference ion temperature, eV -- see `rho_larmor`
     lut::ShapeLUT      # shape is ζ-independent (axisymmetric), so one LUT suffices
 end
 
-function MillerGeometry(; R0::Real, a::Real, κ::Real, δ::Real, q::Real=1.0, wedge_width::Real=π / 2)
+function MillerGeometry(; R0::Real, a::Real, κ::Real, δ::Real, q::Real=1.0, wedge_width::Real=π / 2,
+    B::Real, T_i::Real)
     lut = build_shape_lut(θ -> (cos(θ + δ * sin(θ)), κ * sin(θ)))
-    return MillerGeometry(Float64(R0), Float64(a), Float64(κ), Float64(δ), Float64(q), Float64(wedge_width), lut)
+    return MillerGeometry(Float64(R0), Float64(a), Float64(κ), Float64(δ), Float64(q), Float64(wedge_width),
+        Float64(B), Float64(T_i), lut)
 end
 
 """
-    TCVGeometry(; q=1.0, wedge_width=π/2)
+    TCVGeometry(; q=1.0, wedge_width=π/2, B=1.4, T_i=100.0)
 
 A `MillerGeometry` preset with TCV's approximate parameters
-(R0 ≈ 0.88 m, a ≈ 0.25 m, κ ≈ 1.8, δ ≈ 0.4).
+(R0 ≈ 0.88 m, a ≈ 0.25 m, κ ≈ 1.8, δ ≈ 0.4). `B` (Tesla, on-axis toroidal
+field) and `T_i` (eV, illustrative edge value) are reference values for
+`rho_larmor` -- override with your actual discharge's values.
 """
-TCVGeometry(; q::Real=1.0, wedge_width::Real=π / 2) =
-    MillerGeometry(; R0=0.88, a=0.25, κ=1.8, δ=0.4, q=q, wedge_width=wedge_width)
+TCVGeometry(; q::Real=1.0, wedge_width::Real=π / 2, B::Real=1.4, T_i::Real=300.0) =
+    MillerGeometry(; R0=0.88, a=0.25, κ=1.8, δ=0.4, q=q, wedge_width=wedge_width, B=B, T_i=T_i)
 
 shape_uv(g::MillerGeometry, ρ, θ) = (ρ * cos(θ + g.δ * sin(θ)), g.κ * ρ * sin(θ))
 
@@ -187,31 +209,38 @@ struct FourierGeometry <: AbstractGeometry
     Zmn::Vector{NTuple{3,Float64}}
     q::Float64
     wedge_width::Float64
+    B::Float64         # reference (vacuum) magnetic field, Tesla -- see `rho_larmor`
+    T_i::Float64       # reference ion temperature, eV -- see `rho_larmor`
     lut_cache::Dict{Int,ShapeLUT}    # lazily built per ζ-bin (shape depends on ζ here)
     nζbins::Int
 end
 
-function FourierGeometry(; nfp::Integer, Rmn, Zmn, q::Real=1.0, wedge_width::Real=0.0, nζbins::Integer=64)
+function FourierGeometry(; nfp::Integer, Rmn, Zmn, q::Real=1.0, wedge_width::Real=0.0, B::Real, T_i::Real,
+    nζbins::Integer=64)
     Rmn64 = [(Int(m), Int(n), Float64(c)) for (m, n, c) in Rmn]
     Zmn64 = [(Int(m), Int(n), Float64(c)) for (m, n, c) in Zmn]
-    return FourierGeometry(Int(nfp), Rmn64, Zmn64, Float64(q), Float64(wedge_width), Dict{Int,ShapeLUT}(), Int(nζbins))
+    return FourierGeometry(Int(nfp), Rmn64, Zmn64, Float64(q), Float64(wedge_width), Float64(B), Float64(T_i),
+        Dict{Int,ShapeLUT}(), Int(nζbins))
 end
 
 """
-    W7XGeometry(; q=1.0, wedge_width=π/2, nfp=5, nζbins=64)
+    W7XGeometry(; q=1.0, wedge_width=π/2, nfp=5, nζbins=64, B=2.5, T_i=100.0)
 
 A `FourierGeometry` with a small, illustrative default harmonic set that
 qualitatively resembles W7-X's rotating triangular/bean cross-section over
 one field period. This is a schematic stand-in, NOT a real VMEC boundary --
 supply your own `Rmn`/`Zmn` via `FourierGeometry(...)` for an accurate shape.
+`B`/`T_i` (see `rho_larmor`) are illustrative too, for the same reason --
+override with your actual device's values.
 
 Defaults to a wedge cut (like `TCVGeometry`) so the data cut face is visible;
 pass `wedge_width=0.0` for a fully closed device instead.
 """
-function W7XGeometry(; q::Real=1.0, wedge_width::Real=π / 2, nfp::Integer=5, nζbins::Integer=64)
+function W7XGeometry(; q::Real=1.0, wedge_width::Real=π / 2, nfp::Integer=5, nζbins::Integer=64,
+    B::Real=2.5, T_i::Real=100.0)
     Rmn = [(0, 0, 5.5), (1, 0, 0.55), (1, 1, 0.09), (0, 1, -0.03)]
     Zmn = [(1, 0, 0.55), (1, 1, -0.09), (2, 1, 0.02)]
-    return FourierGeometry(; nfp=nfp, Rmn=Rmn, Zmn=Zmn, q=q, wedge_width=wedge_width, nζbins=nζbins)
+    return FourierGeometry(; nfp=nfp, Rmn=Rmn, Zmn=Zmn, q=q, wedge_width=wedge_width, B=B, T_i=T_i, nζbins=nζbins)
 end
 
 boundary_R(g::FourierGeometry, ζ, θ) = sum(c * cos(m * θ - n * g.nfp * ζ) for (m, n, c) in g.Rmn)

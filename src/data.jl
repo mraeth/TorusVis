@@ -1,55 +1,25 @@
 # ------------------------------------------------------------
-# HDF5 -> PlasmaCore data structures.
+# Deserialized simulation output -> PlasmaCore data structures.
 #
 # All units in this package are Larmor radius (length) and cyclotron
 # frequency (time/rate), per the simulations this is built around.
 # ------------------------------------------------------------
 
 """
-    read_series(path, dsetname; dt=1.0, b0=1.0, Bdir=3, flip_radial=false)
-        -> (grid::PlasmaCore.CartGrid, ts::PlasmaCore.TimeSeries, simtime::PlasmaCore.SimulationTime)
+    read_series(path) -> (grid::PlasmaCore.Grid, ts::PlasmaCore.TimeSeries, simtime::PlasmaCore.SimulationTime)
 
-Read an HDF5 dataset shaped `(nx, ny, nz, nt)` -- radial x poloidal-in-box x
-toroidal-in-box x time -- into PlasmaCore data structures:
+Deserializes a `(simtime, grid, ts)` tuple written by the simulation /
+post-processing pipeline with `Serialization.serialize`, and returns it
+reordered to match `visualize(g, grid, ts, simtime; ...)`'s argument order.
 
-- `ts` is a `PlasmaCore.TimeSeries` of `PlasmaCore.ScalarField`s that loads one
-  `(nx,ny,nz)` timestep from disk on demand and caches it -- the whole file is
-  never eagerly materialized.
-- `grid` is a `PlasmaCore.Grid` describing the box's own logical
-  (ρ, poloidal-window, toroidal-window) axes as a unit cube `[0,1]^3`; the
-  physical ρ/θ/ζ mapping is the job of an `AbstractGeometry`, not this grid.
-  `Bdir` marks which axis runs along the background field (axis 3, the
-  toroidal/nz axis, by default -- consistent with these being flux-tube-like
-  boxes elongated along the field).
-- `simtime` is a `PlasmaCore.SimulationTime` with frame spacing `dt`
-  (ion-cyclotron units, Ω_i⁻¹). `dt=1.0` is a placeholder (unitless
-  frame-index spacing) for files without a recorded physical Δt -- pass the
-  real value once it's known.
-
-The radial (1st) axis is used as-is by default (`flip_radial=false`): the
-simulation's own on-disk ordering already has the hot/core side at the high
-radial index, which `mount_face!`/`mount_volume!` place at `ρ2`, the right
-side of the flat panel -- matching the simulation's setup. Pass
-`flip_radial=true` to reverse it instead, if a dataset's on-disk convention
-runs the other way.
+Unlike the old HDF5-based loader this replaces, `grid` here is not a
+placeholder unit cube: its configuration-space axes (radial,
+poloidal-in-box, toroidal-in-box) carry the box's real physical extent in
+Larmor radii, which `visualize`/`visualize_still` use (together with
+`rho_larmor`) to size the box against the device.
 """
-function read_series(path::AbstractString, dsetname::AbstractString;
-    dt::Real=1.0, b0::Real=1.0, Bdir::Integer=3, flip_radial::Bool=false)
-    fid = h5open(path, "r")
-    dset = fid[dsetname]
-    nx, ny, nz, nt = size(dset)
-
-    loader = t -> begin
-        raw = Float32.(dset[:, :, :, t])
-        PlasmaCore.ScalarField(flip_radial ? reverse(raw, dims=1) : raw)
-    end
-    ts = PlasmaCore.TimeSeries(loader, collect(1:nt); label=dsetname)
-    finalizer(_ -> close(fid), ts)
-
-    grid = PlasmaCore.Grid([0.0, 0.0, 0.0], [1.0, 1.0, 1.0], [nx, ny, nz], 3,
-        Float64(b0), Int(Bdir); type=PlasmaCore.Cart)
-    simtime = PlasmaCore.SimulationTime(Float64(dt), Float64(dt) * (nt - 1); nmax=nt)
-
+function read_series(path::AbstractString)
+    simtime, grid, ts = deserialize(path)
     return grid, ts, simtime
 end
 

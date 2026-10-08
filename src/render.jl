@@ -171,14 +171,79 @@ camera.
 """
 _default_azimuth(mode::Symbol, ζ_A, ζ_B) = ζ_B
 
-function _resolve_ρ_window(g::AbstractGeometry, ρ_window)
+"""
+    _resolve_ρ_window(g, grid, ρ_window, rho_larmor) -> (ρ1, ρ2)
+
+Defaults `ρ_window` to the box's own physical radial size: `grid`'s
+configuration-space extent along its radial (axis 1) axis, in Larmor radii,
+converted to metres via `rho_larmor` and anchored at the device's outer edge
+`minor_radius_bounds(g)[2]` (the hot/core side, matching `read_series`'s
+`flip_radial` convention). Mirrors `_box_angular_widths`'s treatment of the
+poloidal/toroidal axes -- honest about how big the box's own radial extent
+actually is, rather than an arbitrary fixed fraction of the device.
+"""
+function _resolve_ρ_window(g::AbstractGeometry, grid, ρ_window, rho_larmor::Real)
     if ρ_window === nothing
-        ρlo, ρhi = minor_radius_bounds(g)
-        span = ρhi - ρlo
-        return (ρhi - span / 8, ρhi)
+        ρhi = minor_radius_bounds(g)[2]
+        Lx = grid.max[1] - grid.min[1]
+        return (ρhi - Lx * rho_larmor, ρhi)
     else
         return ρ_window
     end
+end
+
+"""
+    _arc_length_rate(f, x; ε=1e-6) -> Float64
+
+`|d(f(x))/dx|` via a central finite difference on the lab-frame point
+`f(x)`, i.e. the local physical arc length swept per unit change in `x`.
+Used below in place of a flat `ρ*Δθ`/`R*Δζ` assumption, since a device's
+cross-section needn't be circular (e.g. `MillerGeometry`'s elongation `κ`
+makes the poloidal arc length per radian `κρ`, not `ρ`, near `θ=0`) or its
+magnetic axis needn't sit at a constant major radius (`FourierGeometry` can
+have a ζ-dependent axis).
+"""
+function _arc_length_rate(f, x; ε=1e-6)
+    p1 = f(x - ε)
+    p2 = f(x + ε)
+    return hypot(p2[1] - p1[1], p2[2] - p1[2], p2[3] - p1[3]) / 2ε
+end
+
+"""
+    _box_angular_widths(g, grid, ρ2, ζ_ref, rho_larmor) -> (box_pol_width, box_tor_width)
+
+Converts the box's own physical size -- `grid`'s configuration-space extent
+along its poloidal (axis 2) and toroidal (axis 3) axes, in Larmor radii --
+into the angular widths it spans on the device, via `rho_larmor` (metres per
+Larmor radius) and the device's own local arc-length-per-radian at the mount
+point (see `_arc_length_rate`): poloidally on the ρ2 surface at θ=0,
+toroidally along the magnetic axis (ρ=0) at ζ=ζ_ref. Only meaningful for a
+geometry whose `ρ`/`surface_point` are themselves in physical metres
+(`MillerGeometry`/`TCVGeometry`, not `FourierGeometry` -- see
+`minor_radius_bounds`'s docstring).
+"""
+function _box_angular_widths(g::AbstractGeometry, grid, ρ2, ζ_ref, rho_larmor::Real)
+    Ly = grid.max[2] - grid.min[2]
+    Lz = grid.max[3] - grid.min[3]
+    pol_rate = _arc_length_rate(θ -> surface_point(g, ζ_ref, ρ2, θ), 0.0)
+    tor_rate = _arc_length_rate(ζ -> surface_point(g, ζ, 0.0, 0.0), ζ_ref)
+    return (Ly * rho_larmor) / pol_rate, (Lz * rho_larmor) / tor_rate
+end
+
+"""
+    _panel_aspect(g, ρ1, ρ2, ζ_ref, box_pol_width) -> Float64
+
+Width/height ratio for the flat 2D panel (`ax2`), matching the *physical*
+shape of the mounted window rather than its raw `(ρ, θ)` plot-coordinate
+ranges -- `ρ2 - ρ1` is already a length, but `box_pol_width` is an angle, so
+naively dividing one by the other mixes units. Converts `box_pol_width` to a
+physical length first, via the same local arc-length-per-radian used to
+derive it in `_box_angular_widths` (so this stays correct whether
+`box_pol_width` was auto-derived or given explicitly).
+"""
+function _panel_aspect(g::AbstractGeometry, ρ1, ρ2, ζ_ref, box_pol_width)
+    pol_rate = _arc_length_rate(θ -> surface_point(g, ζ_ref, ρ2, θ), 0.0)
+    return (ρ2 - ρ1) / (box_pol_width * pol_rate)
 end
 
 """
@@ -228,13 +293,17 @@ whole cross-section.
 
 Keywords:
 - `ρ_window`: `(ρ1, ρ2)` minor-radius window to display; defaults to the
-  outer 1/8 of `minor_radius_bounds(g)`.
+  box's own physical radial size (`grid`'s axis-1 extent, in Larmor radii,
+  via `rho_larmor(g)`), anchored at the device's outer edge -- see
+  `_resolve_ρ_window`.
 - `box_pol_width`: angular width (rad) the box's `ny` axis physically spans
-  -- this is the flux tube's true poloidal size, NOT tiled/repeated.
+  -- this is the flux tube's true poloidal size, NOT tiled/repeated. Defaults
+  to a value derived from `grid`'s own physical extent and `rho_larmor(g)`
+  (see `_box_angular_widths`) -- override explicitly to use a different
+  Larmor radius than the geometry's own `B`/`T_i` imply.
 - `box_tor_width`: angular width (rad) the box's `nz` axis physically spans
   -- this IS tiled/repeated (periodically, via index wraparound) to cover the
-  whole toroidal section. Tune both to your simulation's actual
-  poloidal/parallel extent; defaults reproduce the original TCV script's scale.
+  whole toroidal section. Defaults the same way as `box_pol_width`.
 - `colormap`, `alpha_fn`: colour/opacity mapping for the volume render.
 - `vox_h`: voxel size for the volume grid; defaults to `span(ρ_window)/8`.
 - `fps`, `azimuth_speed`, `record_to`: as before -- `record_to` must end in
@@ -245,8 +314,8 @@ Keywords:
 function visualize(g::AbstractGeometry, grid, ts, simtime;
     mode::Symbol=:volume,
     ρ_window=nothing,
-    box_pol_width::Real=2π * 20 / 750,
-    box_tor_width::Real=π / 2,
+    box_pol_width::Union{Nothing,Real}=nothing,
+    box_tor_width::Union{Nothing,Real}=nothing,
     colormap=:balance,
     alpha_fn=frac -> abs(2frac - 1),
     vox_h=nothing,
@@ -261,10 +330,17 @@ function visualize(g::AbstractGeometry, grid, ts, simtime;
 
     N_ρ, N_θ, N_ζ = size(ts[1])
     nt = length(ts)
-    ρ1, ρ2 = _resolve_ρ_window(g, ρ_window)
+    rl = rho_larmor(g)
+    ρ1, ρ2 = _resolve_ρ_window(g, grid, ρ_window, rl)
 
     ζbounds = wedge(g)
     ζ_A, ζ_B = ζbounds === nothing ? (0.0, 2π) : ζbounds
+
+    if box_pol_width === nothing || box_tor_width === nothing
+        auto_pol, auto_tor = _box_angular_widths(g, grid, ρ2, ζ_A, rl)
+        box_pol_width = something(box_pol_width, auto_pol)
+        box_tor_width = something(box_tor_width, auto_tor)
+    end
 
     sim = Observable(ts[1])
     clim = Observable(Float32(max(maximum(abs, sim[]), 1.0f-6)))
@@ -285,7 +361,7 @@ function visualize(g::AbstractGeometry, grid, ts, simtime;
     colsize!(fig.layout, 1, Relative(0.72))
 
     ax2 = Axis(fig[1, 2]; title="$(ts.label) (flat)", titlecolor=:white,
-        backgroundcolor=BG, aspect=AxisAspect(1))
+        backgroundcolor=BG, aspect=AxisAspect(_panel_aspect(g, ρ1, ρ2, ζ_A, box_pol_width)))
     hidedecorations!(ax2)
     hidespines!(ax2)
     colsize!(fig.layout, 2, Relative(0.28))
@@ -362,8 +438,8 @@ panel's title (in `visualize` this comes from the `TimeSeries`'s own label).
 function visualize_still(g::AbstractGeometry, grid, field::PlasmaCore.ScalarField;
     mode::Symbol=:volume,
     ρ_window=nothing,
-    box_pol_width::Real=2π * 20 / 750,
-    box_tor_width::Real=π / 2,
+    box_pol_width::Union{Nothing,Real}=nothing,
+    box_tor_width::Union{Nothing,Real}=nothing,
     colormap=:balance,
     alpha_fn=frac -> abs(2frac - 1),
     vox_h=nothing,
@@ -374,10 +450,17 @@ function visualize_still(g::AbstractGeometry, grid, field::PlasmaCore.ScalarFiel
     mode in (:face, :volume) || error("mode must be :face or :volume, got $(repr(mode))")
 
     N_ρ, N_θ, N_ζ = size(field)
-    ρ1, ρ2 = _resolve_ρ_window(g, ρ_window)
+    rl = rho_larmor(g)
+    ρ1, ρ2 = _resolve_ρ_window(g, grid, ρ_window, rl)
 
     ζbounds = wedge(g)
     ζ_A, ζ_B = ζbounds === nothing ? (0.0, 2π) : ζbounds
+
+    if box_pol_width === nothing || box_tor_width === nothing
+        auto_pol, auto_tor = _box_angular_widths(g, grid, ρ2, ζ_A, rl)
+        box_pol_width = something(box_pol_width, auto_pol)
+        box_tor_width = something(box_tor_width, auto_tor)
+    end
 
     clim = Float32(max(maximum(abs, field), 1.0f-6))
     colorrange = Observable((-clim, clim))
@@ -396,7 +479,7 @@ function visualize_still(g::AbstractGeometry, grid, field::PlasmaCore.ScalarFiel
     colsize!(fig.layout, 1, Relative(0.72))
 
     ax2 = Axis(fig[1, 2]; title="$label (flat)", titlecolor=:white,
-        backgroundcolor=BG, aspect=AxisAspect(1))
+        backgroundcolor=BG, aspect=AxisAspect(_panel_aspect(g, ρ1, ρ2, ζ_A, box_pol_width)))
     hidedecorations!(ax2)
     hidespines!(ax2)
     colsize!(fig.layout, 2, Relative(0.28))
