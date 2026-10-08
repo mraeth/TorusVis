@@ -6,13 +6,13 @@
 # keeps its own true (small) size.
 #
 # Exports a GIF rather than opening an interactive window -- see
-# _data/ for the result.
+# _output/ for the result.
 using TorusVis
 
 datadir = get(ENV, "TORUSVIS_DATADIR", joinpath(@__DIR__, "..", ".."))
 grid, ts, simtime = read_series(joinpath(datadir, "dn"))
 
-outdir = joinpath(@__DIR__, "..", "_data")
+outdir = joinpath(@__DIR__, "..", "_output")
 mkpath(outdir)
 
 g = TCVGeometry(q=1.0)   # box size vs. torus is derived from g.B/g.T_i via rho_larmor(g);

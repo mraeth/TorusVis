@@ -9,7 +9,7 @@ Manifest.toml
 _deps/
 
 # Generated outputs
-_data/
+_output/
 *.gif
 *.mp4
 

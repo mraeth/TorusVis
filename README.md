@@ -220,7 +220,7 @@ julia --project=. scripts/periodic_extend_demo.jl   # periodic_extend utility de
 ```
 
 All four `visualize(...)` scripts export a full-length GIF to
-`_data/` (gitignored) rather than opening an interactive window — edit their
+`_output/` (gitignored) rather than opening an interactive window — edit their
 `record_to=...` argument to change the path or switch to `.mp4`. Any script
 can be flipped back to an interactive window by removing `record_to`
 (passing `nothing`, the default), e.g.:

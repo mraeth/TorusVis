@@ -3,7 +3,7 @@
 # volumetric extension into the torus body.
 #
 # Exports a GIF rather than opening an interactive window -- see
-# _data/ for the result.
+# _output/ for the result.
 
 using Pkg
 Pkg.activate(@__DIR__)
@@ -19,7 +19,7 @@ simTime, grid, ts = deserialize(joinpath(datadir, "en.bslLD"))
 
 # grid, ts, simtime = read_series(joinpath(datadir, "en.h5"), "en")
 
-outdir = joinpath(@__DIR__, "..", "_data")
+outdir = joinpath(@__DIR__, "..", "_output")
 mkpath(outdir)
 
 g = TCVGeometry()

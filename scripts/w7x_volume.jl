@@ -4,13 +4,13 @@
 # the closed-device (no end caps) rendering path.
 #
 # Exports a GIF rather than opening an interactive window -- see
-# _data/ for the result.
+# _output/ for the result.
 using TorusVis
 
 datadir = get(ENV, "TORUSVIS_DATADIR", joinpath(@__DIR__, "..", ".."))
 grid, ts, simtime = read_series(joinpath(datadir, "dn"))
 
-outdir = joinpath(@__DIR__, "..", "_data")
+outdir = joinpath(@__DIR__, "..", "_output")
 mkpath(outdir)
 
 g = W7XGeometry(q=1.0, wedge_width=0.0)
