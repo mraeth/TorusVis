@@ -257,3 +257,7 @@ visualize(g, grid, ts, simtime; mode=:volume)
 Swap in your own device by implementing the seven `AbstractGeometry` functions
 above for a new struct — everything else (data loading, voxelization,
 rendering, both modes) works unchanged.
+
+## License
+
+ISC, see [LICENSE](LICENSE). Part of the [BSL6D](https://gitlab.mpcdf.mpg.de/bsl6d/bsl6d) project; authors in [AUTHORS.md](AUTHORS.md).
